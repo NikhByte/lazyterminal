@@ -1,0 +1,1 @@
+"""smartsh package."""
