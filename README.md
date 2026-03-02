@@ -4,6 +4,8 @@ A shareable terminal assistant shell for Linux that adds:
 
 - Autocorrect for common command typos
 - Dropdown command suggestions (`Ctrl+Space`)
+- Personalized ranking based on local usage frequency and recency
+- Directory typo help for `cd` (single-match confirm, multi-match options)
 - Command history suggestions
 - Confirmation prompt for risky commands
 
@@ -24,6 +26,45 @@ lazyterminal
   - `help`
   - `smartsh config`
   - `smartsh reload`
+  - `smartsh learning status`
+  - `smartsh learning reset`
+
+## Personalization (local-only)
+
+smartsh learns from successful commands and ranks suggestions to surface what you use most.
+
+Learned data is stored only on your machine in:
+
+```bash
+~/.local/share/smartsh/learning.json
+```
+
+Captured fields per command:
+
+- Full command string
+- Base command (first token)
+- Last-used timestamp
+- Working directory frequency
+- Previous-command context frequency
+
+No network calls, cloud sync, or telemetry upload are used.
+
+Sensitive command filtering is enabled via denylist patterns. Matching commands are not learned.
+Additionally, sensitive-looking commands are guarded at runtime:
+- first attempt is blocked with an error message,
+- running the exact same command again asks for confirmation.
+
+Default ranking formula:
+
+```text
+score = 0.55*match + 0.20*frequency + 0.20*recency + 0.05*context
+```
+
+where:
+- `match`: prefix/substring/fuzzy relevance to current input
+- `frequency`: normalized usage count
+- `recency`: exponential decay by `learning_decay_days`
+- `context`: same directory / previous base command bonus
 
 ## Config
 
@@ -40,6 +81,10 @@ Useful keys:
 - `confirm_dangerous`
 - `typo_map`
 - `custom_commands`
+- `learning_enabled`
+- `learning_top_n`
+- `learning_decay_days`
+- `learning_denylist_patterns`
 
 After changing config run:
 
@@ -47,7 +92,11 @@ After changing config run:
 smartsh
 # inside smartsh
 smartsh reload
+smartsh learning status
+smartsh learning reset
 ```
+
+If `learning.json` is corrupted or schema is unsupported, smartsh resets to safe defaults automatically.
 
 ## Export a shareable bundle
 

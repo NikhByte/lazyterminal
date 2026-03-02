@@ -1,6 +1,7 @@
 """Default configuration and command metadata for smartsh."""
 
 DEFAULT_TYPO_MAP = {
+    "cdd": "cd",
     "gti": "git",
     "gir": "git",
     "gi": "git",
@@ -86,8 +87,21 @@ DANGEROUS_PREFIXES = [
     "sudo rm",
 ]
 
+DEFAULT_SENSITIVE_PATTERNS = [
+    r"password",
+    r"passwd",
+    r"token",
+    r"secret",
+    r"api[_-]?key",
+    r"client[_-]?secret",
+    r"private\s+key",
+    r"-----begin\s+.*private\s+key-----",
+]
+
 BUILTINS = {
     "help": "Show smartsh help",
     "smartsh config": "Print config file location",
     "smartsh reload": "Reload command cache",
+    "smartsh learning status": "Show personalization status",
+    "smartsh learning reset": "Reset learned command history",
 }
