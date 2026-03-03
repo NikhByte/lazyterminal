@@ -3,10 +3,12 @@
 A shareable terminal assistant shell for Linux that adds:
 
 - Autocorrect for common command typos
+- Right-side short command explanation while typing
 - Dropdown command suggestions (`Ctrl+Space`)
 - Personalized ranking based on local usage frequency and recency
-- Directory typo help for `cd` (single-match confirm, multi-match options)
+- Directory typo help for `cd` (single-match auto-fix, multi-match list)
 - Command history suggestions
+- Plain-English explanation when commands fail
 - Confirmation prompt for risky commands
 
 ## Quick start
@@ -78,6 +80,8 @@ Useful keys:
 
 - `autocorrect_enabled`
 - `autocorrect_threshold`
+- `command_explain_enabled`
+- `error_explain_enabled`
 - `confirm_dangerous`
 - `typo_map`
 - `custom_commands`

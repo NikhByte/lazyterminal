@@ -16,6 +16,8 @@ def default_config() -> dict:
     return {
         "autocorrect_enabled": True,
         "autocorrect_threshold": 0.78,
+        "command_explain_enabled": True,
+        "error_explain_enabled": True,
         "confirm_dangerous": True,
         "typo_map": DEFAULT_TYPO_MAP,
         "custom_commands": COMMON_COMMANDS,

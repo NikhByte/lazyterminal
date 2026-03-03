@@ -6,6 +6,7 @@ import os
 import shlex
 import subprocess
 import difflib
+import signal
 from pathlib import Path
 
 from prompt_toolkit import PromptSession
@@ -18,7 +19,7 @@ from prompt_toolkit.shortcuts import confirm
 
 from .autocorrect import maybe_autocorrect
 from .config import CONFIG_PATH, ensure_config, load_config
-from .defaults import BUILTINS, DANGEROUS_PREFIXES
+from .defaults import BUILTINS, COMMAND_HINTS, DANGEROUS_PREFIXES
 from .personalization import (
     LEARNING_PATH,
     PersonalizationStore,
@@ -92,6 +93,69 @@ class SmartShell:
     def _prompt(self) -> HTML:
         cwd = Path.cwd().name
         return HTML(f"<ansicyan>smartsh</ansicyan> <ansigreen>{cwd}</ansigreen> > ")
+
+    def _right_prompt(self) -> HTML:
+        if not self.cfg.get("command_explain_enabled", True):
+            return HTML("")
+
+        hint = self._short_command_explanation(self.session.default_buffer.text)
+        if not hint:
+            return HTML("")
+        return HTML(f"<ansibrightblack>{hint}</ansibrightblack>")
+
+    def _short_command_explanation(self, line: str) -> str:
+        stripped = line.strip()
+        if not stripped:
+            return "type command to run"
+
+        try:
+            parts = shlex.split(stripped)
+        except ValueError:
+            parts = stripped.split()
+        if not parts:
+            return "type command to run"
+
+        first = parts[0]
+        second = parts[1] if len(parts) > 1 else ""
+        pair = f"{first} {second}".strip()
+
+        if stripped in BUILTINS:
+            return BUILTINS[stripped].lower()
+        if pair in COMMAND_HINTS:
+            return COMMAND_HINTS[pair]
+        if first in COMMAND_HINTS:
+            return COMMAND_HINTS[first]
+        return "run shell command"
+
+    def _plain_english_error(self, line: str, returncode: int) -> str:
+        if returncode == 0:
+            return "Command completed successfully."
+        if returncode == 126:
+            return "Command exists but is not executable."
+        if returncode == 127:
+            return "Command not found. Check spelling or install it."
+        if returncode == 130:
+            return "Command was interrupted by Ctrl+C."
+        if returncode > 0:
+            return f"Command failed with exit code {returncode}."
+
+        signal_num = abs(returncode)
+        try:
+            signal_name = signal.Signals(signal_num).name
+            return f"Command was terminated by signal {signal_name}."
+        except ValueError:
+            return f"Command was terminated by signal {signal_num}."
+
+    def _plain_english_cd_error(self, target: str, exc: OSError) -> str:
+        expanded = os.path.expanduser(target)
+        target_path = Path(expanded)
+        if exc.errno == 2:
+            return f"Directory '{target_path}' does not exist from your current location."
+        if exc.errno == 13:
+            return f"Permission denied for directory '{target_path}'."
+        if exc.errno == 20:
+            return f"'{target_path}' is not a directory."
+        return f"Could not change directory to '{target_path}'."
 
     def _is_dangerous(self, line: str) -> bool:
         lowered = line.strip().lower()
@@ -202,6 +266,8 @@ class SmartShell:
                 return True
             except OSError as exc:
                 print(f"cd: {exc}")
+                if self.cfg.get("error_explain_enabled", True):
+                    print(f"explain: {self._plain_english_cd_error(target, exc)}")
                 suggestions = self._cd_suggestions(target)
                 if suggestions:
                     expanded = os.path.expanduser(target)
@@ -209,19 +275,23 @@ class SmartShell:
                     parent = Path(expanded).parent if Path(expanded).is_absolute() else (Path.cwd() / rel).parent
                     if len(suggestions) == 1:
                         suggested_path = parent / suggestions[0]
-                        if confirm(f"Did you mean '{suggested_path}'?", default=True):
-                            try:
-                                os.chdir(suggested_path)
-                                corrected = f"cd {suggested_path}"
-                                self._record_learning(corrected)
-                                print(f"Changed directory to: {suggested_path}")
-                                return True
-                            except OSError as inner_exc:
-                                print(f"cd: {inner_exc}")
+                        try:
+                            os.chdir(suggested_path)
+                            corrected = f"cd {suggested_path}"
+                            self._record_learning(corrected)
+                            print(f"autocorrect [cd]: {target} -> {suggested_path}")
+                            print(f"Changed directory to: {suggested_path}")
+                            return True
+                        except OSError as inner_exc:
+                            print(f"cd: {inner_exc}")
+                            if self.cfg.get("error_explain_enabled", True):
+                                print(f"explain: {self._plain_english_cd_error(str(suggested_path), inner_exc)}")
                     else:
-                        print("Possible directory matches:")
+                        print("Similar directories:")
                         for idx, item in enumerate(suggestions, start=1):
                             print(f"  {idx}. {item}")
+                elif self.cfg.get("error_explain_enabled", True):
+                    print("explain: No similar directories found.")
                 return False
 
         shell = os.environ.get("SHELL", "/bin/bash")
@@ -229,13 +299,15 @@ class SmartShell:
         if result.returncode == 0:
             self._record_learning(line)
             return True
+        if self.cfg.get("error_explain_enabled", True):
+            print(f"explain: {self._plain_english_error(line, result.returncode)}")
         return False
 
     def run(self) -> int:
         print("smartsh: Ctrl-Space opens command menu, type 'help' for built-ins.")
         while True:
             try:
-                line = self.session.prompt(self._prompt()).strip()
+                line = self.session.prompt(self._prompt(), rprompt=lambda: self._right_prompt()).strip()
             except KeyboardInterrupt:
                 print("Use 'exit' to quit.")
                 continue
